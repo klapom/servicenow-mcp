@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cmdb_ci Business Rules Analysis — PHOENIX DEV</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 24px; }
+  h1 { color: #58a6ff; margin-bottom: 8px; font-size: 1.6em; }
+  h2 { color: #58a6ff; margin: 32px 0 16px; font-size: 1.2em; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+  .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 0.9em; }
+
+  /* Pipeline */
+  .pipeline { display: flex; gap: 20px; margin: 24px 0; flex-wrap: wrap; }
+  .phase { flex: 1; min-width: 280px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .phase-header { font-weight: 700; font-size: 1.05em; margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; text-align: center; }
+  .phase-before .phase-header { background: #1a2332; color: #79c0ff; border: 1px solid #1f6feb; }
+  .phase-after .phase-header { background: #1a2d1a; color: #7ee787; border: 1px solid #238636; }
+  .phase-async .phase-header { background: #2d1f1a; color: #ffa657; border: 1px solid #d29922; }
+
+  .rule { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; margin: 8px 0; font-size: 0.82em; position: relative; }
+  .rule:hover { border-color: #58a6ff; }
+  .rule .order { position: absolute; right: 8px; top: 8px; background: #21262d; color: #8b949e; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-family: monospace; }
+  .rule .name { font-weight: 600; color: #c9d1d9; margin-bottom: 4px; }
+  .rule .trigger { color: #8b949e; font-size: 0.85em; }
+  .rule .detail { color: #8b949e; font-size: 0.8em; margin-top: 4px; font-style: italic; }
+
+  .rule.fnt { border-color: #f85149; border-width: 2px; background: #1a1215; }
+  .rule.fnt .name { color: #f85149; }
+  .rule.fnt::before { content: "FNT NEU"; position: absolute; left: -1px; top: -10px; background: #f85149; color: #fff; font-size: 0.65em; padding: 1px 6px; border-radius: 3px; font-weight: 700; }
+
+  .rule.warning { border-color: #d29922; }
+  .rule.warning .name::after { content: " \26A0"; color: #d29922; }
+
+  .rule.bug { border-color: #f85149; border-style: dashed; }
+  .rule.bug .name::after { content: " \1F41B"; }
+
+  .rule.dead { opacity: 0.4; border-style: dotted; }
+  .rule.dead .name::after { content: " (leer)"; color: #484f58; }
+
+  .rule.custom { border-left: 3px solid #a371f7; }
+
+  /* Legend */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; padding: 12px; background: #161b22; border-radius: 8px; border: 1px solid #30363d; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.82em; }
+  .legend-swatch { width: 16px; height: 16px; border-radius: 3px; border: 2px solid; }
+
+  /* Relation diagram */
+  .relation-diagram { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; margin: 16px 0; }
+
+  svg text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+  /* Issues table */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.85em; }
+  th { background: #161b22; color: #58a6ff; text-align: left; padding: 10px 12px; border: 1px solid #30363d; }
+  td { padding: 8px 12px; border: 1px solid #21262d; vertical-align: top; }
+  tr:nth-child(even) td { background: #0d1117; }
+  .severity-high { color: #f85149; font-weight: 700; }
+  .severity-medium { color: #d29922; font-weight: 700; }
+  .severity-low { color: #8b949e; }
+
+  /* Interaction diagram */
+  .interaction-grid { display: grid; grid-template-columns: 1fr; gap: 2px; margin: 16px 0; }
+  .flow-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #161b22; border-radius: 4px; font-size: 0.82em; }
+  .flow-arrow { color: #58a6ff; font-weight: 700; min-width: 24px; text-align: center; }
+  .flow-label { color: #8b949e; flex: 1; }
+  .flow-source { color: #79c0ff; font-weight: 600; min-width: 200px; }
+  .flow-target { color: #7ee787; font-weight: 600; min-width: 200px; }
+</style>
+</head>
+<body>
+
+<h1>Business Rules auf cmdb_ci* — Execution Pipeline</h1>
+<p class="subtitle">phoenixdev.service-now.com | 22 aktive Rules auf cmdb_ci (Base Table) + geplante FNT Rules | Stand: 23.03.2026</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="border-color:#30363d; background:#0d1117"></div> OOTB / ServiceNow</div>
+  <div class="legend-item"><div class="legend-swatch" style="border-color:#a371f7; border-left:3px solid #a371f7; background:#0d1117"></div> Custom (Kunde)</div>
+  <div class="legend-item"><div class="legend-swatch" style="border-color:#f85149; border-width:2px; background:#1a1215"></div> FNT Neu (geplant)</div>
+  <div class="legend-item"><div class="legend-swatch" style="border-color:#d29922; background:#0d1117"></div> Warnung</div>
+  <div class="legend-item"><div class="legend-swatch" style="border-color:#f85149; border-style:dashed; background:#0d1117"></div> Bug</div>
+  <div class="legend-item"><div class="legend-swatch" style="border-color:#30363d; border-style:dotted; background:#0d1117; opacity:0.4"></div> Toter Code</div>
+</div>
+
+<h2>INSERT Pipeline</h2>
+<div class="pipeline">
+  <div class="phase phase-before">
+    <div class="phase-header">BEFORE INSERT</div>
+    <div class="rule fnt"><div class="order">10</div><div class="name">FNT Idempotency Check</div><div class="trigger">Prueft X-Idempotency-Key, bricht bei Duplikat ab</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">Null out asset on insert</div><div class="trigger">current.asset = ''</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">SNC CMDB Category</div><div class="trigger">CMDBItem.setCategory()</div></div>
+    <div class="rule warning"><div class="order">100</div><div class="name">Update location as needed</div><div class="trigger">location = assigned_to.location</div><div class="detail">Ueberschreibt Location bei jedem Insert</div></div>
+    <div class="rule custom"><div class="order">100</div><div class="name">Populate Related Countries</div><div class="trigger">u_related_companies -> u_related_countries</div></div>
+    <div class="rule"><div class="order">500</div><div class="name">Validate Duplicate Of CI</div><div class="trigger">Prueft duplicate_of Referenz</div></div>
+    <div class="rule"><div class="order">742</div><div class="name">Populate CI Manufacturer</div><div class="trigger">manufacturer = model_id.manufacturer</div></div>
+    <div class="rule"><div class="order">9000</div><div class="name">Update life cycle from legacy</div><div class="trigger">Legacy -> CSDM Lifecycle Sync</div></div>
+    <div class="rule"><div class="order">9000</div><div class="name">Update legacy from CSDM</div><div class="trigger">CSDM -> Legacy Lifecycle Sync</div></div>
+    <div class="rule"><div class="order">9900</div><div class="name">Create Asset on insert</div><div class="trigger">AssetandCI.createAsset()</div></div>
+  </div>
+  <div class="phase phase-after">
+    <div class="phase-header">AFTER INSERT</div>
+    <div class="rule"><div class="order">100</div><div class="name">cmdb synch event</div><div class="trigger">gs.eventQueue('relationship.rollup')</div></div>
+    <div class="rule"><div class="order">500</div><div class="name">Update model category</div><div class="trigger">cmdb_model_category Sync</div></div>
+    <div class="rule"><div class="order">1000</div><div class="name">Move duplicates of CI</div><div class="trigger">Duplikat-Ketten umhaengen</div></div>
+  </div>
+  <div class="phase phase-async">
+    <div class="phase-header">ASYNC INSERT</div>
+    <div class="rule"><div class="order">100</div><div class="name">Adjust plan records</div><div class="trigger">PlannedMaintenanceUtils</div></div>
+  </div>
+</div>
+
+<h2>UPDATE Pipeline</h2>
+<div class="pipeline">
+  <div class="phase phase-before">
+    <div class="phase-header">BEFORE UPDATE</div>
+    <div class="rule fnt"><div class="order">50</div><div class="name">FNT Timestamp Check (LWW)</div><div class="trigger">fnt_source_timestamp vs sys_updated_on — rejects stale</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">SNC CMDB Category</div><div class="trigger">CMDBItem.setCategory()</div></div>
+    <div class="rule warning"><div class="order">100</div><div class="name">Update location as needed</div><div class="trigger">location = assigned_to.location</div><div class="detail">Ueberschreibt Location bei jedem Update!</div></div>
+    <div class="rule custom bug"><div class="order">100</div><div class="name">Populate Related Countries</div><div class="trigger">Array += String Konkatenation Bug</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">Reset Duplicate Of State</div><div class="trigger">Leert duplicate_of bei Update (async_always)</div></div>
+    <div class="rule"><div class="order">500</div><div class="name">Validate Duplicate Of CI</div><div class="trigger">Prueft duplicate_of Referenz</div></div>
+    <div class="rule"><div class="order">742</div><div class="name">Populate CI Manufacturer</div><div class="trigger">manufacturer = model_id.manufacturer</div></div>
+    <div class="rule"><div class="order">1000</div><div class="name">Create asset on model change</div><div class="trigger">Asset erstellen wenn Model gesetzt</div></div>
+    <div class="rule"><div class="order">1000</div><div class="name">Reset Duplicate Discovery Source</div><div class="trigger">discovery_source = '' bei duplicate_of clear</div></div>
+    <div class="rule"><div class="order">1010</div><div class="name">Reset Unknown Discovery Source</div><div class="trigger">"Unknown" discovery_source leeren</div></div>
+    <div class="rule warning"><div class="order">9000</div><div class="name">Update life cycle from legacy</div><div class="trigger">Legacy -> CSDM (bidirektional!)</div><div class="detail">Zusammen mit CSDM->Legacy: Endlosschleifen-Risiko</div></div>
+    <div class="rule warning"><div class="order">9000</div><div class="name">Update legacy from CSDM</div><div class="trigger">CSDM -> Legacy (bidirektional!)</div><div class="detail">Condition: life_cycle_stage/status CHANGES</div></div>
+    <div class="rule"><div class="order">9900</div><div class="name">Update Asset fields on change</div><div class="trigger">AssetAndCISynchronizer.syncRecords()</div></div>
+  </div>
+  <div class="phase phase-after">
+    <div class="phase-header">AFTER UPDATE</div>
+    <div class="rule"><div class="order">100</div><div class="name">Track "Retired" CIs</div><div class="trigger">EoL-Ledger bei life_cycle_stage=End of Life</div><div class="detail">Relevant fuer FNT Retire Flow!</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">cmdb synch event</div><div class="trigger">gs.eventQueue('relationship.rollup')</div></div>
+    <div class="rule fnt"><div class="order">200</div><div class="name">FNT Outbound Sync</div><div class="trigger">Delta-Payload an FNT pushen bei Feldaenderung</div></div>
+    <div class="rule"><div class="order">500</div><div class="name">Update model category</div><div class="trigger">cmdb_model_category Sync</div></div>
+    <div class="rule"><div class="order">1000</div><div class="name">Move duplicates of CI</div><div class="trigger">Duplikat-Ketten umhaengen</div></div>
+  </div>
+  <div class="phase phase-async">
+    <div class="phase-header">ASYNC UPDATE</div>
+    <div class="rule"><div class="order">100</div><div class="name">CSDM Data Sync on Reclassification</div><div class="trigger">managed_by_group bei Klassenwechsel</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">Outside Maintenance Schedule</div><div class="trigger">Change Request Maintenance pruefen</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">Adjust plan records</div><div class="trigger">PlannedMaintenanceUtils</div></div>
+  </div>
+</div>
+
+<h2>DELETE Pipeline</h2>
+<div class="pipeline">
+  <div class="phase phase-before">
+    <div class="phase-header">BEFORE DELETE</div>
+    <div class="rule"><div class="order">100</div><div class="name">Delete Multisource record</div><div class="trigger">cmdb_multisource_data Cleanup</div></div>
+  </div>
+  <div class="phase phase-after">
+    <div class="phase-header">AFTER DELETE</div>
+    <div class="rule"><div class="order">100</div><div class="name">Delete Sys Object Source record</div><div class="trigger">sys_object_source Cleanup</div></div>
+    <div class="rule"><div class="order">100</div><div class="name">Update WS Runtime Attribute</div><div class="trigger">CMDB Workspace full scan trigger</div></div>
+  </div>
+</div>
+
+<h2>Datenfluss ueber Relationen (cmdb_rel_ci)</h2>
+<div class="relation-diagram">
+<svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background boxes -->
+  <rect x="20" y="20" width="240" height="80" rx="8" fill="#161b22" stroke="#a371f7" stroke-width="2"/>
+  <text x="140" y="52" text-anchor="middle" fill="#a371f7" font-size="13" font-weight="700">Application (cmdb_ci_appl)</text>
+  <text x="140" y="72" text-anchor="middle" fill="#8b949e" font-size="11">u_gxp_relevance</text>
+
+  <rect x="340" y="20" width="240" height="80" rx="8" fill="#161b22" stroke="#79c0ff" stroke-width="2"/>
+  <text x="460" y="52" text-anchor="middle" fill="#79c0ff" font-size="13" font-weight="700">Windows Server (cmdb_ci_win_server)</text>
+  <text x="460" y="72" text-anchor="middle" fill="#8b949e" font-size="11">u_gxp_relevance (geerbt)</text>
+
+  <rect x="660" y="20" width="220" height="80" rx="8" fill="#161b22" stroke="#7ee787" stroke-width="2"/>
+  <text x="770" y="52" text-anchor="middle" fill="#7ee787" font-size="13" font-weight="700">Other Applications</text>
+  <text x="770" y="72" text-anchor="middle" fill="#8b949e" font-size="11">u_gxp_relevance (Quelle)</text>
+
+  <!-- Arrows -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/></marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f85149"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#7ee787"/></marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#d29922"/></marker>
+  </defs>
+
+  <line x1="260" y1="60" x2="330" y2="60" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="295" y="52" text-anchor="middle" fill="#58a6ff" font-size="9">parent</text>
+
+  <line x1="580" y1="60" x2="650" y2="60" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="5,3"/>
+  <text x="615" y="52" text-anchor="middle" fill="#58a6ff" font-size="9">child</text>
+
+  <!-- GxP Flow explanation -->
+  <rect x="280" y="120" width="360" height="60" rx="6" fill="#2d1f1a" stroke="#d29922" stroke-width="1"/>
+  <text x="460" y="142" text-anchor="middle" fill="#ffa657" font-size="11" font-weight="700">GxP Relevance Propagation (BR: Marek.Szot)</text>
+  <text x="460" y="158" text-anchor="middle" fill="#8b949e" font-size="10">App -> cmdb_rel_ci -> Win Server -> cmdb_rel_ci -> Other Apps</text>
+  <text x="460" y="172" text-anchor="middle" fill="#f85149" font-size="10">Bug: enthaelt gs.log("TEST MS 1:") Debug-Statements</text>
+
+  <line x1="460" y1="100" x2="460" y2="115" stroke="#d29922" stroke-width="1" marker-end="url(#arrow-orange)"/>
+
+  <!-- Relationship Rollup -->
+  <rect x="20" y="210" width="860" height="70" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="450" y="235" text-anchor="middle" fill="#79c0ff" font-size="13" font-weight="700">relationship.rollup Event (OOTB)</text>
+  <text x="450" y="255" text-anchor="middle" fill="#8b949e" font-size="11">Feuert bei JEDEM CI-Update -> propagiert Aenderungen ueber alle Relations</text>
+  <text x="450" y="270" text-anchor="middle" fill="#8b949e" font-size="10">Betrifft: Maintenance Schedules, Dependent CIs, Service Mappings</text>
+
+  <!-- FNT Integration -->
+  <rect x="20" y="310" width="400" height="100" rx="8" fill="#1a1215" stroke="#f85149" stroke-width="2"/>
+  <text x="220" y="335" text-anchor="middle" fill="#f85149" font-size="13" font-weight="700">FNT Integration (NEU geplant)</text>
+  <text x="220" y="355" text-anchor="middle" fill="#c9d1d9" font-size="11">CI Relations: Contains (Rack->Server), Runs on (Chassis->Blade)</text>
+  <text x="220" y="375" text-anchor="middle" fill="#8b949e" font-size="10">Keine Feldvererbung ueber Relationen geplant</text>
+  <text x="220" y="395" text-anchor="middle" fill="#8b949e" font-size="10">Aber: relationship.rollup wird bei jedem FNT-Update getriggert</text>
+
+  <rect x="460" y="310" width="420" height="100" rx="8" fill="#161b22" stroke="#d29922" stroke-width="2"/>
+  <text x="670" y="335" text-anchor="middle" fill="#d29922" font-size="13" font-weight="700">Lifecycle Propagation (Track Retired CIs)</text>
+  <text x="670" y="355" text-anchor="middle" fill="#c9d1d9" font-size="11">life_cycle_stage = End of Life</text>
+  <text x="670" y="375" text-anchor="middle" fill="#8b949e" font-size="10">-> DependentCIHelper.checkAndAddToEOLLedger()</text>
+  <text x="670" y="395" text-anchor="middle" fill="#8b949e" font-size="10">Prueft abhaengige CIs ueber Relations -> EoL Ledger</text>
+
+  <line x1="420" y1="360" x2="450" y2="360" stroke="#d29922" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+</svg>
+</div>
+
+<h2>Erkannte Probleme & Widersprueche</h2>
+<table>
+  <tr>
+    <th style="width:60px">Severity</th>
+    <th style="width:250px">Rule</th>
+    <th>Problem</th>
+    <th style="width:200px">Auswirkung auf FNT</th>
+  </tr>
+  <tr>
+    <td class="severity-medium">MEDIUM</td>
+    <td>Update location as needed<br><span style="color:#8b949e;font-size:0.85em">Order 100, before INSERT+UPDATE</span></td>
+    <td>Ueberschreibt <code>location</code> unkontrolliert mit <code>assigned_to.location</code> bei JEDEM Insert/Update — auch wenn Location absichtlich anders gesetzt wurde.</td>
+    <td>Kein direkter Konflikt — unsere FNT-Felder (<code>u_fnt_campus</code>, <code>u_fnt_gebaeude</code>) sind separat. Aber wenn spaeter Location-Mapping kommt (OP-5), muss diese Rule beachtet werden.</td>
+  </tr>
+  <tr>
+    <td class="severity-high">HIGH</td>
+    <td>Populate Related Countries<br><span style="color:#8b949e;font-size:0.85em">Order 100, before INSERT+UPDATE</span></td>
+    <td><code>countryArrayIDs</code> ist als Array <code>[]</code> initialisiert, wird mit <code>+=</code> String-konkateniert. Erzeugt trailing Komma. JavaScript Typ-Coercion maskiert den Bug.</td>
+    <td>Kein direkter FNT-Bezug, aber feuert bei jedem CI-Update (auch FNT-initiiert).</td>
+  </tr>
+  <tr>
+    <td class="severity-medium">MEDIUM</td>
+    <td>Lifecycle Sync (2 Rules)<br><span style="color:#8b949e;font-size:0.85em">Order 9000, before INSERT+UPDATE</span></td>
+    <td>Bidirektionaler Sync zwischen Legacy und CSDM Lifecycle. Endlosschleifen-Risiko, nur durch interne <code>LifeCycleUtil</code> Logik verhindert.</td>
+    <td><strong>Direkt relevant:</strong> FNT Retire (Section 2.3) setzt <code>life_cycle_stage</code> -> triggert beide Rules. FNT Timestamp Check MUSS vor Order 9000 laufen (Order 50 ist korrekt).</td>
+  </tr>
+  <tr>
+    <td class="severity-low">LOW</td>
+    <td>GxP Relevance (cmdb_ci_appl)<br><span style="color:#8b949e;font-size:0.85em">Order 100, before INSERT+UPDATE</span></td>
+    <td>Enthaelt <code>gs.log("TEST MS 1:")</code> Debug-Statements. Traversiert Relations ineffizient (nested GlideRecord queries).</td>
+    <td>Kein FNT-Bezug, aber Debug-Logs sollten entfernt werden.</td>
+  </tr>
+  <tr>
+    <td class="severity-low">LOW</td>
+    <td>Leere Rules (2 Stueck)<br><span style="color:#8b949e;font-size:0.85em">cmdb_ci_business_app</span></td>
+    <td>"Reset Platform Host" und "Reset stale retired status" haben leere Script-Bodies (<code>// Add your code here</code>). Toter Code.</td>
+    <td>Kein Effekt, aber irrefuehrend.</td>
+  </tr>
+</table>
+
+<h2>FNT Rules Platzierung — Order Begr&uuml;ndung</h2>
+<table>
+  <tr>
+    <th>FNT Rule</th>
+    <th>When</th>
+    <th>Order</th>
+    <th>Begruendung</th>
+  </tr>
+  <tr>
+    <td style="color:#f85149;font-weight:700">FNT Idempotency Check</td>
+    <td>before INSERT</td>
+    <td><strong>10</strong></td>
+    <td>Muss als ERSTES laufen — vor jeder anderen Logik (Asset-Erstellung, Kategorie etc.). Bricht ab wenn Duplikat.</td>
+  </tr>
+  <tr>
+    <td style="color:#f85149;font-weight:700">FNT Timestamp Check (LWW)</td>
+    <td>before UPDATE</td>
+    <td><strong>50</strong></td>
+    <td>Muss VOR Location-Update (100), Manufacturer-Sync (742) und Lifecycle-Sync (9000) laufen. Verhindert stale Updates bevor andere Rules Seiteneffekte erzeugen.</td>
+  </tr>
+  <tr>
+    <td style="color:#f85149;font-weight:700">FNT Outbound Sync</td>
+    <td>after UPDATE</td>
+    <td><strong>200</strong></td>
+    <td>NACH dem relationship.rollup Event (100) und NACH Track Retired (100), aber VOR Model Category (500) und Duplikat-Move (1000). Stellt sicher dass alle OOTB before-Rules gelaufen sind bevor der Delta-Payload berechnet wird.</td>
+  </tr>
+</table>
+
+<p style="margin-top:32px; color:#484f58; font-size:0.8em;">Generiert am 23.03.2026 aus phoenixdev.service-now.com | 100 aktive Business Rules auf cmdb_ci* analysiert</p>
+
+</body>
+</html>
