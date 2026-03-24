@@ -3,23 +3,8 @@ Tests for the ServiceNow MCP server integration with catalog functionality.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
 
 from servicenow_mcp.server import ServiceNowMCP
-from servicenow_mcp.tools.catalog_tools import (
-    GetCatalogItemParams,
-    ListCatalogCategoriesParams,
-    ListCatalogItemsParams,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    get_catalog_item as get_catalog_item_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    list_catalog_categories as list_catalog_categories_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    list_catalog_items as list_catalog_items_tool,
-)
 
 
 class TestServerCatalog(unittest.TestCase):
@@ -27,7 +12,6 @@ class TestServerCatalog(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create a mock config
         self.config = {
             "instance_url": "https://example.service-now.com",
             "auth": {
@@ -38,105 +22,61 @@ class TestServerCatalog(unittest.TestCase):
                 },
             },
         }
-
-        # Create a mock server
         self.server = ServiceNowMCP(self.config)
 
-        # Mock the FastMCP server
-        self.server.mcp_server = MagicMock()
-        self.server.mcp_server.resource = MagicMock()
-        self.server.mcp_server.tool = MagicMock()
+    def test_catalog_tools_registered(self):
+        """Test that catalog tools are registered in tool_definitions."""
+        expected_tools = [
+            "list_catalog_items",
+            "get_catalog_item",
+            "list_catalog_categories",
+            "create_catalog_category",
+            "update_catalog_category",
+            "move_catalog_items",
+        ]
+        for tool_name in expected_tools:
+            self.assertIn(
+                tool_name,
+                self.server.tool_definitions,
+                f"Expected tool '{tool_name}' to be registered",
+            )
 
-    def test_register_catalog_resources(self):
-        """Test that catalog resources are registered correctly."""
-        # Call the method to register resources
-        self.server._register_resources()
+    def test_list_catalog_items_tool_definition(self):
+        """Test the list_catalog_items tool definition has correct structure."""
+        definition = self.server.tool_definitions["list_catalog_items"]
+        impl_func, params_model, return_type, description, serialization = definition
+        self.assertTrue(callable(impl_func))
+        self.assertIn("catalog", description.lower())
 
-        # Check that the resource decorators were called
-        resource_calls = self.server.mcp_server.resource.call_args_list
-        resource_paths = [call[0][0] for call in resource_calls]
+    def test_get_catalog_item_tool_definition(self):
+        """Test the get_catalog_item tool definition has correct structure."""
+        definition = self.server.tool_definitions["get_catalog_item"]
+        impl_func, params_model, return_type, description, serialization = definition
+        self.assertTrue(callable(impl_func))
+        self.assertIn("catalog", description.lower())
 
-        # Check that catalog resources are registered
-        self.assertIn("catalog://items", resource_paths)
-        self.assertIn("catalog://categories", resource_paths)
-        self.assertIn("catalog://{item_id}", resource_paths)
+    def test_list_catalog_categories_tool_definition(self):
+        """Test the list_catalog_categories tool definition has correct structure."""
+        definition = self.server.tool_definitions["list_catalog_categories"]
+        impl_func, params_model, return_type, description, serialization = definition
+        self.assertTrue(callable(impl_func))
+        self.assertIn("catalog", description.lower())
 
-    def test_register_catalog_tools(self):
-        """Test that catalog tools are registered correctly."""
-        # Call the method to register tools
-        self.server._register_tools()
-
-        # Check that the tool decorator was called
-        self.server.mcp_server.tool.assert_called()
-
-        # Get the tool functions
-        tool_calls = self.server.mcp_server.tool.call_args_list
-        
-        # Instead of trying to extract names from the call args, just check that the decorator was called
-        # the right number of times (at least 3 times for the catalog tools)
-        self.assertGreaterEqual(len(tool_calls), 3)
-
-    @patch("servicenow_mcp.tools.catalog_tools.list_catalog_items")
-    def test_list_catalog_items_tool(self, mock_list_catalog_items):
-        """Test the list_catalog_items tool."""
-        # Mock the tool function
-        mock_list_catalog_items.return_value = {
-            "success": True,
-            "message": "Retrieved 1 catalog items",
-            "items": [
-                {
-                    "sys_id": "item1",
-                    "name": "Laptop",
-                }
-            ],
-        }
-
-        # Register the tools
-        self.server._register_tools()
-
-        # Check that the tool decorator was called
-        self.server.mcp_server.tool.assert_called()
-
-    @patch("servicenow_mcp.tools.catalog_tools.get_catalog_item")
-    def test_get_catalog_item_tool(self, mock_get_catalog_item):
-        """Test the get_catalog_item tool."""
-        # Mock the tool function
-        mock_get_catalog_item.return_value = {
-            "success": True,
-            "message": "Retrieved catalog item: Laptop",
-            "data": {
-                "sys_id": "item1",
-                "name": "Laptop",
-            },
-        }
-
-        # Register the tools
-        self.server._register_tools()
-
-        # Check that the tool decorator was called
-        self.server.mcp_server.tool.assert_called()
-
-    @patch("servicenow_mcp.tools.catalog_tools.list_catalog_categories")
-    def test_list_catalog_categories_tool(self, mock_list_catalog_categories):
-        """Test the list_catalog_categories tool."""
-        # Mock the tool function
-        mock_list_catalog_categories.return_value = {
-            "success": True,
-            "message": "Retrieved 1 catalog categories",
-            "categories": [
-                {
-                    "sys_id": "cat1",
-                    "title": "Hardware",
-                }
-            ],
-        }
-
-        # Register the tools
-        self.server._register_tools()
-
-        # Check that the tool decorator was called
-        self.server.mcp_server.tool.assert_called()
+    def test_catalog_tools_in_full_package_config(self):
+        """Test that catalog tools are listed in the full package definition."""
+        full_package = self.server.package_definitions.get("full", [])
+        catalog_tools = [
+            "list_catalog_items",
+            "get_catalog_item",
+            "list_catalog_categories",
+        ]
+        for tool_name in catalog_tools:
+            self.assertIn(
+                tool_name,
+                full_package,
+                f"Expected tool '{tool_name}' in full package definition",
+            )
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

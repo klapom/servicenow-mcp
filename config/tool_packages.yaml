@@ -108,6 +108,38 @@ platform_developer:
   - commit_changeset
   - publish_changeset
   - add_file_to_changeset
+  # Business Rules
+  - create_business_rule
+  - list_business_rules
+  - get_business_rule
+  - update_business_rule
+  - delete_business_rule
+  # Scheduled Jobs
+  - create_scheduled_job
+  - list_scheduled_jobs
+  - get_scheduled_job
+  - update_scheduled_job
+  - delete_scheduled_job
+  # REST Messages
+  - create_rest_message
+  - list_rest_messages
+  - get_rest_message
+  - update_rest_message
+  - delete_rest_message
+  - create_http_method
+  - list_http_methods
+  - update_http_method
+  - delete_http_method
+  # Custom Fields
+  - create_field
+  - list_fields
+  - update_field
+  # Generic Table API
+  - table_get_records
+  - table_get_record
+  - table_create_record
+  - table_update_record
+  - table_delete_record
 
 data_integration:
   # Import Sets & Data Sources
@@ -172,6 +204,118 @@ system_administrator:
   # System Logs
   - list_syslog_entries
   - get_syslog_entry
+  # Custom Fields
+  - create_field
+  - list_fields
+  - update_field
+  # Business Rules
+  - create_business_rule
+  - list_business_rules
+  - get_business_rule
+  - update_business_rule
+  - delete_business_rule
+  # Scheduled Jobs
+  - create_scheduled_job
+  - list_scheduled_jobs
+  - get_scheduled_job
+  - update_scheduled_job
+  - delete_scheduled_job
+  # OAuth Credentials
+  - create_oauth_entity
+  - list_oauth_entities
+  - get_oauth_entity
+  - update_oauth_entity
+  - delete_oauth_entity
+  - create_oauth_profile
+  - list_oauth_profiles
+  - update_oauth_profile
+  - delete_oauth_profile
+  # REST Messages
+  - create_rest_message
+  - list_rest_messages
+  - get_rest_message
+  - update_rest_message
+  - delete_rest_message
+  - create_http_method
+  - list_http_methods
+  - update_http_method
+  - delete_http_method
+  # Generic Table API
+  - table_get_records
+  - table_get_record
+  - table_create_record
+  - table_update_record
+  - table_delete_record
+
+fnt_integration:
+  # Custom Fields (cmdb_ci FNT fields)
+  - create_field
+  - list_fields
+  - update_field
+  # Business Rules (outbound trigger, timestamp check)
+  - create_business_rule
+  - list_business_rules
+  - get_business_rule
+  - update_business_rule
+  - delete_business_rule
+  # Script Includes (deriveCIClass, field mapping)
+  - list_script_includes
+  - get_script_include
+  - create_script_include
+  - update_script_include
+  - delete_script_include
+  - execute_script_include
+  # Scheduled Jobs (product sync, reconciliation)
+  - create_scheduled_job
+  - list_scheduled_jobs
+  - get_scheduled_job
+  - update_scheduled_job
+  - delete_scheduled_job
+  # REST Messages (FNT Command endpoints)
+  - create_rest_message
+  - list_rest_messages
+  - get_rest_message
+  - update_rest_message
+  - delete_rest_message
+  - create_http_method
+  - list_http_methods
+  - update_http_method
+  - delete_http_method
+  # OAuth (FNT OAuth2 credentials)
+  - create_oauth_entity
+  - list_oauth_entities
+  - get_oauth_entity
+  - update_oauth_entity
+  - delete_oauth_entity
+  - create_oauth_profile
+  - list_oauth_profiles
+  - update_oauth_profile
+  - delete_oauth_profile
+  # Import Sets & Transform Maps
+  - list_import_sets
+  - list_data_sources
+  - list_import_runs
+  - trigger_import
+  - list_transform_maps
+  - get_transform_map
+  - list_field_mappings
+  - list_transform_scripts
+  - list_scheduled_imports
+  - clone_import_configuration
+  # Generic Table API (fallback for anything not covered)
+  - table_get_records
+  - table_get_record
+  - table_create_record
+  - table_update_record
+  - table_delete_record
+  # Changesets
+  - list_changesets
+  - get_changeset_details
+  - create_changeset
+  - update_changeset
+  - commit_changeset
+  - publish_changeset
+  - add_file_to_changeset
 
 full:
   # Incident Management
@@ -296,3 +440,45 @@ full:
   - create_project
   - update_project
   - list_projects
+  # Generic Table API
+  - table_get_records
+  - table_get_record
+  - table_create_record
+  - table_update_record
+  - table_delete_record
+  # Custom Fields (sys_dictionary)
+  - create_field
+  - list_fields
+  - update_field
+  # Business Rules (sys_script)
+  - create_business_rule
+  - list_business_rules
+  - get_business_rule
+  - update_business_rule
+  - delete_business_rule
+  # Scheduled Jobs (sysauto_script)
+  - create_scheduled_job
+  - list_scheduled_jobs
+  - get_scheduled_job
+  - update_scheduled_job
+  - delete_scheduled_job
+  # REST Messages (sys_rest_message)
+  - create_rest_message
+  - list_rest_messages
+  - get_rest_message
+  - update_rest_message
+  - delete_rest_message
+  - create_http_method
+  - list_http_methods
+  - update_http_method
+  - delete_http_method
+  # OAuth Credentials (oauth_entity)
+  - create_oauth_entity
+  - list_oauth_entities
+  - get_oauth_entity
+  - update_oauth_entity
+  - delete_oauth_entity
+  - create_oauth_profile
+  - list_oauth_profiles
+  - update_oauth_profile
+  - delete_oauth_profile
