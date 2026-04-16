@@ -404,24 +404,21 @@ def scan_consulting(consulting_dir: Path) -> list[dict]:
 # ── Embedding ────────────────────────────────────────────────────────────────
 
 class Embedder:
-    """BGE-M3 embedding model via sentence-transformers (1024-dim)."""
+    """BGE-M3 embeddings via central embed-proxy (HTTP)."""
 
-    def __init__(self, batch_size: int = 32):
-        from sentence_transformers import SentenceTransformer
-        print("Loading BGE-M3 embedding model...")
-        self.model = SentenceTransformer("BAAI/bge-m3")
+    def __init__(self, batch_size: int = 32, embed_url: str = "http://127.0.0.1:8097/v1"):
+        from openai import OpenAI
+        self.client = OpenAI(base_url=embed_url, api_key="not-needed")
         self.batch_size = batch_size
-        print(f"Model loaded (dim={self.model.get_sentence_embedding_dimension()}).")
+        print(f"Using central embedding proxy at {embed_url}")
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed texts and return dense vectors (1024-dim)."""
         all_embeddings = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
-            vecs = self.model.encode(
-                batch, show_progress_bar=False, normalize_embeddings=True
-            )
-            all_embeddings.extend(vecs.tolist())
+            resp = self.client.embeddings.create(input=batch, model="bge-m3")
+            all_embeddings.extend([d.embedding for d in resp.data])
             done = min(i + self.batch_size, len(texts))
             if done % (self.batch_size * 10) == 0 or done == len(texts):
                 print(f"    Embedded {done}/{len(texts)}...")

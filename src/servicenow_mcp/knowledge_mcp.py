@@ -189,7 +189,7 @@ class KnowledgeMCP:
         self.qdrant: QdrantClient | None = None
         self.neo4j_driver = None
         self.llm: OpenAI | None = None
-        self.embedder = None
+        self._embed_client: OpenAI | None = None
         self.mcp_server = Server("sn-knowledge-mcp")
         self._register_handlers()
 
@@ -217,12 +217,9 @@ class KnowledgeMCP:
             logger.warning(f"Redis not available, HyDE caching disabled: {e}")
             self.redis = None
 
-        logger.info("Loading embedding model...")
-        from sentence_transformers import SentenceTransformer
-        self.embedder = SentenceTransformer("BAAI/bge-m3")
-        logger.info(
-            f"Embedding model loaded (dim={self.embedder.get_sentence_embedding_dimension()})."
-        )
+        embed_url = self.config.embed_base_url if hasattr(self.config, "embed_base_url") and self.config.embed_base_url else "http://127.0.0.1:8097/v1"
+        self._embed_client = OpenAI(base_url=embed_url, api_key="not-needed")
+        logger.info(f"Using central embedding proxy at {embed_url}")
 
     def disconnect(self) -> None:
         if self.neo4j_driver:
@@ -251,8 +248,8 @@ class KnowledgeMCP:
     # ── Embedding helper ─────────────────────────────────────────────────
 
     def _embed(self, text: str) -> list[float]:
-        vec = self.embedder.encode([text], normalize_embeddings=True)
-        return vec[0].tolist()
+        resp = self._embed_client.embeddings.create(input=text, model="bge-m3")
+        return resp.data[0].embedding
 
     # ── Qdrant search ────────────────────────────────────────────────────
 
