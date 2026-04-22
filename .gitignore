@@ -177,10 +177,8 @@ cython_debug/
 *.swo
 
 # Project specific
-.env.local
-.env.development
-.env.test
-.env.production
+.env.*
+!.env.example
 
 # data
 data/   

@@ -1,12 +1,4 @@
-"""
-ServiceNow MCP Server
+"""MCP server for ServiceNow knowledge — RAG over Qdrant+Neo4j+vLLM."""
 
-A Model Context Protocol (MCP) server implementation for ServiceNow,
-focusing on the ITSM module.
-"""
-
-__version__ = "0.1.0"
-
-from servicenow_mcp.server import ServiceNowMCP
-
-__all__ = ["ServiceNowMCP"] 
+__version__ = "0.5.0"
+__service_name__ = "servicenow-mcp"

@@ -1,0 +1,31 @@
+[Unit]
+Description=MCP server for ServiceNow knowledge (platform + ITIL/ITSM + consulting) — RAG over Qdrant+Neo4j+vLLM
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/servicenow-mcp
+# Process env wins over .env per pydantic-settings default (ADR-010).
+Environment=LISTEN_PORT=32310
+Environment=MCP_PORT=33310
+Environment=LOG_LEVEL=info
+# RAG backends (LAN-local on DGX Spark)
+Environment=VLLM_BASE_URL=http://localhost:32000/v1
+Environment=VLLM_MODEL=qwen36-35b
+Environment=QDRANT_URL=http://localhost:6333
+Environment=QDRANT_COLLECTION=sn_mcp_docs
+Environment=NEO4J_URI=bolt://localhost:7687
+Environment=NEO4J_USER=neo4j
+Environment=NEO4J_PASSWORD=aegis-rag-neo4j-password
+Environment=RETRIEVAL_TOP_K=8
+Environment=SN_DOCS_DIR=%h/projects/servicenow-mcp/docs
+Environment=EMBED_BASE_URL=http://127.0.0.1:8097/v1
+ExecStart=%h/.local/bin/uv run --directory %h/projects/servicenow-mcp servicenow-mcp-http
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
