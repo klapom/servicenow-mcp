@@ -348,21 +348,27 @@ class ServiceNowKnowledgeMCP:
     # ── Graph-based query expansion ──────────────────────────────────────
 
     def _graph_expand_query(self, question: str) -> list[str]:
-        """Find related tables/fields/processes via Neo4j keyword search."""
+        """Find related tables/fields/processes via Neo4j keyword search.
+
+        Uses unified :Entity graph (seed schema from SN export + doc-extracted).
+        """
         keywords = re.findall(r'\b[A-Za-z_]{4,}\b', question)
         if not keywords:
             return []
 
         expansion_terms = []
         with self.neo4j_driver.session(database="neo4j") as session:
-            for kw in keywords[:3]:  # max 3 keywords
-                # Signal A: Table fields
+            for kw in keywords[:3]:
+                # Signal A: Schema fields (prefer seed — authoritative)
                 result = session.run(
                     """
-                    MATCH (f:Field {namespace_id: $ns})
-                    WHERE toLower(f.name) CONTAINS toLower($kw)
-                       OR toLower(f.description) CONTAINS toLower($kw)
-                    MATCH (t:Table)-[:HAS_FIELD]->(f)
+                    MATCH (t:Entity {sub_type:'TABLE', namespace_id:$ns})
+                          -[:HAS_FIELD]->
+                          (f:Entity {sub_type:'FIELD', namespace_id:$ns})
+                    WHERE (toLower(f.name) CONTAINS toLower($kw)
+                           OR toLower(coalesce(f.description,'')) CONTAINS toLower($kw)
+                           OR toLower(coalesce(f.label,'')) CONTAINS toLower($kw))
+                      AND coalesce(f.source,'doc') <> 'doc'
                     RETURN DISTINCT t.name AS table_name, f.name AS field_name
                     LIMIT 5
                     """,
@@ -371,16 +377,16 @@ class ServiceNowKnowledgeMCP:
                 for r in result:
                     expansion_terms.append(f"{r['table_name']}.{r['field_name']}")
 
-                # Signal B: Process/Pattern knowledge nodes
+                # Signal B: ITIL processes and concepts (doc-extracted)
                 result = session.run(
                     """
-                    MATCH (p {namespace_id: $ns})
-                    WHERE (p:Process OR p:Pattern OR p:Role)
+                    MATCH (p:Entity {namespace_id:$ns})
+                    WHERE p.sub_type IN ['ITIL_PROCESS','FLOW','BUSINESS_RULE','ROLE']
                       AND (toLower(p.name) CONTAINS toLower($kw)
-                           OR toLower(p.description) CONTAINS toLower($kw)
-                           OR ANY(tag IN p.tags WHERE toLower(tag) CONTAINS toLower($kw)))
-                    OPTIONAL MATCH (p)-[:USES_TABLE]->(t:Table)
-                    RETURN p.name AS pattern_name, collect(DISTINCT t.name) AS related_tables
+                           OR toLower(coalesce(p.description,'')) CONTAINS toLower($kw))
+                    OPTIONAL MATCH (p)-[:USES_TABLE]->(t:Entity {sub_type:'TABLE'})
+                    RETURN p.name AS pattern_name,
+                           collect(DISTINCT t.name) AS related_tables
                     LIMIT 5
                     """,
                     kw=kw, ns=NAMESPACE,
@@ -404,7 +410,7 @@ class ServiceNowKnowledgeMCP:
     }
 
     def _graph_routed_search(self, question: str, limit: int = 8) -> list[dict]:
-        """Find matching knowledge nodes in Neo4j, then search their source files in Qdrant."""
+        """Find matching entities in Neo4j, route to their Documents, search Qdrant."""
         keywords = [
             w for w in re.findall(r'\b[A-Za-z_]{3,}\b', question)
             if w.lower() not in self._STOPWORDS
@@ -415,38 +421,23 @@ class ServiceNowKnowledgeMCP:
         source_files = set()
         with self.neo4j_driver.session(database="neo4j") as session:
             for kw in keywords[:5]:
+                # Match any doc-extracted concept (not pure schema nodes)
                 result = session.run(
                     """
-                    MATCH (p {namespace_id: $ns})
-                    WHERE (p:Process OR p:Pattern OR p:Role)
-                      AND (toLower(p.name) CONTAINS toLower($kw)
-                           OR toLower(p.description) CONTAINS toLower($kw)
-                           OR ANY(tag IN p.tags WHERE toLower(tag) CONTAINS toLower($kw)))
-                    RETURN p.source_file AS source_file
+                    MATCH (d:Document {namespace_id:$ns})-[:MENTIONS]->(e:Entity)
+                    WHERE e.sub_type IN ['ITIL_PROCESS','FLOW','BUSINESS_RULE',
+                                         'ROLE','STATE','ACL','UPDATE_SET']
+                      AND (toLower(e.name) CONTAINS toLower($kw)
+                           OR toLower(coalesce(e.description,'')) CONTAINS toLower($kw))
+                    RETURN DISTINCT d.source AS source_path
                     LIMIT 5
                     """,
                     kw=kw, ns=NAMESPACE,
                 )
                 for r in result:
-                    if r["source_file"]:
-                        source_files.add(r["source_file"])
-
-                # Also follow RELATED_TO edges for one hop
-                result = session.run(
-                    """
-                    MATCH (p {namespace_id: $ns})
-                    WHERE (p:Process OR p:Pattern OR p:Role)
-                      AND (toLower(p.name) CONTAINS toLower($kw)
-                           OR ANY(tag IN p.tags WHERE toLower(tag) CONTAINS toLower($kw)))
-                    MATCH (p)-[:RELATED_TO]-(related)
-                    RETURN related.source_file AS source_file
-                    LIMIT 5
-                    """,
-                    kw=kw, ns=NAMESPACE,
-                )
-                for r in result:
-                    if r["source_file"]:
-                        source_files.add(r["source_file"])
+                    if r["source_path"]:
+                        # Qdrant indexes by basename only
+                        source_files.add(Path(r["source_path"]).name)
 
         if not source_files:
             return []
@@ -491,39 +482,48 @@ class ServiceNowKnowledgeMCP:
     # ── Neo4j graph queries ──────────────────────────────────────────────
 
     def _graph_find_path(self, start_table: str, end_table: str) -> list[dict]:
-        """Find shortest path between two SN tables via EXTENDS/HAS_FIELD/reference edges."""
+        """Find shortest path between two SN tables via EXTENDS/REFERENCES/USES_TABLE edges."""
         with self.neo4j_driver.session(database="neo4j") as session:
             result = session.run(
                 """
                 MATCH path = shortestPath(
-                    (a:Table {name: $start, namespace_id: $ns})
-                    -[:EXTENDS|HAS_FIELD|USES_TABLE*..6]->
-                    (b:Table {name: $end, namespace_id: $ns})
+                    (a:Entity {sub_type:'TABLE', name:$start, namespace_id:$ns})
+                    -[:EXTENDS|HAS_FIELD|REFERENCES|USES_TABLE*..6]->
+                    (b:Entity {sub_type:'TABLE', name:$end, namespace_id:$ns})
                 )
                 UNWIND relationships(path) AS rel
                 RETURN
                     startNode(rel).name AS from_name,
                     type(rel) AS rel_type,
                     endNode(rel).name AS to_name,
-                    CASE WHEN 'Field' IN labels(endNode(rel))
+                    CASE WHEN endNode(rel).sub_type = 'FIELD'
                          THEN endNode(rel).name ELSE null END AS via_field
                 """,
-                start=start_table, end=end_table, ns=NAMESPACE,
+                start=start_table.lower(), end=end_table.lower(), ns=NAMESPACE,
             )
             return [dict(r) for r in result]
 
     def _graph_table_fields(self, table_name: str) -> list[dict]:
-        """Get all fields of a table with their reference types."""
+        """Get all fields of a table with their reference types.
+
+        Only seed-sourced fields (authoritative schema), excluding doc-extracted
+        concepts that the LLM mis-labeled as fields.
+        """
         with self.neo4j_driver.session(database="neo4j") as session:
             result = session.run(
                 """
-                MATCH (t:Table {name: $name, namespace_id: $ns})-[:HAS_FIELD]->(f:Field)
-                OPTIONAL MATCH (f)-[:REFERENCES]->(rt:Table)
-                RETURN f.name AS field, f.field_type AS field_type,
-                       f.description AS description, rt.name AS references_table
+                MATCH (t:Entity {sub_type:'TABLE', name:$name, namespace_id:$ns})
+                      -[:HAS_FIELD]->
+                      (f:Entity {sub_type:'FIELD', namespace_id:$ns})
+                WHERE coalesce(f.source,'doc') <> 'doc'
+                OPTIONAL MATCH (f)-[:REFERENCES]->(rt:Entity {sub_type:'TABLE'})
+                RETURN f.name AS field,
+                       coalesce(f.field_type, f.label) AS field_type,
+                       f.description AS description,
+                       rt.name AS references_table
                 ORDER BY f.name
                 """,
-                name=table_name, ns=NAMESPACE,
+                name=table_name.lower(), ns=NAMESPACE,
             )
             return [dict(r) for r in result]
 
@@ -532,11 +532,14 @@ class ServiceNowKnowledgeMCP:
         with self.neo4j_driver.session(database="neo4j") as session:
             result = session.run(
                 """
-                MATCH (child:Table {namespace_id: $ns})-[:EXTENDS]->(parent:Table {name: $name, namespace_id: $ns})
-                RETURN child.name AS child_table, child.description AS description
+                MATCH (child:Entity {sub_type:'TABLE', namespace_id:$ns})
+                      -[:EXTENDS]->
+                      (parent:Entity {sub_type:'TABLE', name:$name, namespace_id:$ns})
+                RETURN child.name AS child_table,
+                       coalesce(child.description, child.label) AS description
                 ORDER BY child.name
                 """,
-                name=table_name, ns=NAMESPACE,
+                name=table_name.lower(), ns=NAMESPACE,
             )
             return [dict(r) for r in result]
 
@@ -579,24 +582,24 @@ class ServiceNowKnowledgeMCP:
             if extensions:
                 results[f"extensions_of_{tbl}"] = extensions
 
-        # Search Process/Pattern/Role knowledge nodes by keyword
+        # Search ITIL-process / flow / business-rule / role entities by keyword
         keywords = re.findall(r'\b[A-Za-z_]{3,}\b', question)
         if keywords:
             with self.neo4j_driver.session(database="neo4j") as session:
                 for kw in keywords[:3]:
                     result = session.run(
                         """
-                        MATCH (p {namespace_id: $ns})
-                        WHERE (p:Process OR p:Pattern OR p:Role)
+                        MATCH (p:Entity {namespace_id:$ns})
+                        WHERE p.sub_type IN ['ITIL_PROCESS','FLOW','BUSINESS_RULE',
+                                             'ROLE','STATE','ACL','UPDATE_SET']
                           AND (toLower(p.name) CONTAINS toLower($kw)
-                               OR toLower(p.description) CONTAINS toLower($kw)
-                               OR ANY(tag IN p.tags WHERE toLower(tag) CONTAINS toLower($kw)))
-                        OPTIONAL MATCH (p)-[:USES_TABLE]->(t:Table)
-                        OPTIONAL MATCH (p)-[:RELATED_TO]-(related)
-                        RETURN labels(p)[0] AS type, p.name AS name, p.description AS description,
-                               p.source_file AS source_file,
-                               collect(DISTINCT t.name) AS uses_tables,
-                               collect(DISTINCT related.name) AS related_to
+                               OR toLower(coalesce(p.description,'')) CONTAINS toLower($kw))
+                        OPTIONAL MATCH (p)-[:USES_TABLE]->(t:Entity {sub_type:'TABLE'})
+                        OPTIONAL MATCH (d:Document)-[:MENTIONS]->(p)
+                        RETURN p.sub_type AS type, p.name AS name,
+                               p.description AS description,
+                               collect(DISTINCT d.source)[0] AS source_file,
+                               collect(DISTINCT t.name) AS uses_tables
                         LIMIT 10
                         """,
                         kw=kw, ns=NAMESPACE,
@@ -605,18 +608,22 @@ class ServiceNowKnowledgeMCP:
                     if knowledge_hits:
                         results.setdefault("knowledge_nodes", []).extend(knowledge_hits)
 
-        # If no tables found in question, search fields by keyword
+        # If no tables found in question, search fields by keyword (seed-only)
         if not mentioned_tables:
             with self.neo4j_driver.session(database="neo4j") as session:
                 kw = question.split()[0] if question.split() else question
                 result = session.run(
                     """
-                    MATCH (f:Field {namespace_id: $ns})
-                    WHERE toLower(f.name) CONTAINS toLower($kw)
-                       OR toLower(f.description) CONTAINS toLower($kw)
-                    OPTIONAL MATCH (t:Table)-[:HAS_FIELD]->(f)
-                    RETURN t.name AS table_name, f.name AS field, f.field_type AS field_type,
-                           f.description AS description
+                    MATCH (t:Entity {sub_type:'TABLE', namespace_id:$ns})
+                          -[:HAS_FIELD]->
+                          (f:Entity {sub_type:'FIELD', namespace_id:$ns})
+                    WHERE coalesce(f.source,'doc') <> 'doc'
+                      AND (toLower(f.name) CONTAINS toLower($kw)
+                           OR toLower(coalesce(f.label,'')) CONTAINS toLower($kw)
+                           OR toLower(coalesce(f.description,'')) CONTAINS toLower($kw))
+                    RETURN t.name AS table_name, f.name AS field,
+                           f.field_type AS field_type,
+                           coalesce(f.description, f.label) AS description
                     LIMIT 15
                     """,
                     kw=kw, ns=NAMESPACE,

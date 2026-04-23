@@ -1,0 +1,74 @@
+# ServiceNow Schema Export — table scope
+#
+# Controls which tables scripts/export_sn_schema.py pulls from sys_db_object /
+# sys_dictionary. Keep this list narrow: every table adds ~10-50 fields.
+#
+# Profiles let you switch between minimal, full ITIL+CMDB, and phoenix-specific
+# scopes without editing multiple files.
+
+profiles:
+  core:
+    description: "Minimal ITIL + CMDB baseline (replaces hardcoded CORE_TABLES)"
+    tables:
+      # Task hierarchy
+      - task
+      - incident
+      - problem
+      - change_request
+      - change_task
+      - sc_request
+      - sc_req_item
+      - sc_task
+      # CMDB
+      - cmdb_ci
+      - cmdb_ci_computer
+      - cmdb_ci_server
+      - cmdb_ci_appl
+      - cmdb_ci_service
+      - cmdb_ci_business_app
+      - cmdb_rel_ci
+      # Knowledge
+      - kb_knowledge
+      - kb_knowledge_base
+      - kb_category
+      # Identity & access
+      - sys_user
+      - sys_user_group
+      - sys_user_role
+      - sys_user_grmember
+      - sys_user_has_role
+      # Common reference data
+      - cmn_location
+      - core_company
+      # SLA
+      - contract_sla
+      - task_sla
+      # Update sets & scope
+      - sys_update_set
+      - sys_update_xml
+      - sys_scope
+      # Choice / dictionary meta
+      - sys_choice
+      - sys_dictionary
+      # Notifications / events
+      - sysevent
+      - sysevent_email_action
+
+  phoenix:
+    description: "Core + PHOENIX custom-scope tables (u_* and x_pomm_*)"
+    extends: core
+    # Custom tables discovered via sys_db_object filter (applied at runtime)
+    custom_prefixes:
+      - "u_"
+      - "x_pomm_"
+
+# ── Export behavior ──────────────────────────────────────────────────
+export:
+  # Include inherited fields from super_class (true = full flat view per table)
+  include_inherited_fields: true
+  # Fetch sys_choice entries per choice field
+  include_choices: true
+  # Skip sys_ prefix fields (audit, sys_id etc.) to reduce noise in Excel
+  skip_sys_fields: true
+  # Per-table row cap on sys_dictionary (safety)
+  max_fields_per_table: 300

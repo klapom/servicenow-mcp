@@ -28,11 +28,12 @@ ServiceNow MCP server providing two distinct capabilities:
 - Redis (localhost:6379) — HyDE cache
 
 ## Key Directories
-- `schulungen/` — 25 structured process/platform guides (indexed into Qdrant)
+- `schulungen/` — 27 structured process/platform guides (indexed into Qdrant + extracted to Neo4j)
 - `raw_research/` — Source material from Browser-Use and WebFetch
 - `docs/` — API docs, integration docs, business rules analysis
 - `consulting/` — Future: customer-specific consulting knowledge
-- `scripts/` — `index_sn_docs.py` (re-index), `build_sn_graph.py` (rebuild graph)
+- `data/` — Excel exports of live SN schema (sn_schema_<env>_<profile>.xlsx)
+- `scripts/` — `index_sn_docs.py` (Qdrant), `export_sn_schema.py` + `import_sn_schema.py` (SN instance → Excel → Neo4j seed), `extract_sn_entities.py` (doc → entity graph)
 
 ## Development
 ```bash
@@ -42,8 +43,12 @@ uv pip install -e ".[knowledge]"
 # Re-index after adding/changing schulungen/ or docs/
 .venv/bin/python3 scripts/index_sn_docs.py
 
-# Rebuild Neo4j graph
-.venv/bin/python3 scripts/build_sn_graph.py
+# Rebuild Neo4j seed graph from live SN instance (2 steps)
+.venv/bin/python3 scripts/export_sn_schema.py --env SN_TEST --profile core    # → data/sn_schema_sn_test_core.xlsx
+.venv/bin/python3 scripts/import_sn_schema.py data/sn_schema_sn_test_core.xlsx
+
+# (Re-)extract entities + relations from schulungen/ docs
+.venv/bin/python3 scripts/extract_sn_entities.py --all-schulungen --purge-docs
 
 # Run knowledge server locally
 .venv/bin/python3 -m servicenow_mcp.knowledge_server --port 8094
