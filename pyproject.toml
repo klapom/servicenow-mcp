@@ -84,6 +84,9 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-fail-under=80",
 ]
+markers = [
+    "integration: requires live Neo4j (and optionally SN-populated seed graph)",
+]
 
 [tool.coverage.run]
 branch = true

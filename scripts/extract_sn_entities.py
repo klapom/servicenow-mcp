@@ -396,8 +396,15 @@ def persist_chunk(
     for e in entities:
         key = entity_key(e["name"], e["type"])
         # Sub-type stored as property; dynamic labels would need APOC.
+        # Source tagging: 'doc' on create, promote to 'seed+doc' if the
+        # seed importer has already claimed this key.
         session.run(
             "MERGE (e:Entity {key: $key}) "
+            "ON CREATE SET e.source = 'doc' "
+            "ON MATCH  SET e.source = CASE "
+            "   WHEN e.source = 'seed' THEN 'seed+doc' "
+            "   WHEN e.source IS NULL THEN 'doc' "
+            "   ELSE e.source END "
             "SET e.namespace_id=$ns, e.name=$name, e.sub_type=$stype, "
             "    e.description=coalesce(e.description, $desc)",
             key=key,
