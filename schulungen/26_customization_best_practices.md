@@ -1,3 +1,14 @@
+---
+title: ServiceNow Customization — Best Practices Kompendium
+slug: customization_best_practices
+scope: customizing
+tags: [customizing, best-practices, ootb, upgrade-safe, scripting, acl, testing, deployment, performance, security]
+entities: [business_rule, client_script, ui_policy, ui_action, sys_dictionary, update_set, scoped_app, acl, flow_designer, atf]
+version: ServiceNow — general (Washington DC / Yokohama)
+source: browser-use + curated (2026-04-22)
+reviewed: 2026-04-22
+---
+
 # ServiceNow Customization — Best Practices Kompendium
 
 > **Version:** 2.0 — Vollständig angereichert mit Knowledge-Base-Inhalten | **Datum:** 2026-04-22

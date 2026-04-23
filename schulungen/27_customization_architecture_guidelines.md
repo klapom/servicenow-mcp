@@ -1,3 +1,14 @@
+---
+title: ServiceNow Customizing — Architektur-Leitlinien
+slug: customization_architecture_guidelines
+scope: customizing
+tags: [customizing, architecture, abl, scoped-apps, upgrade-safe, scripting, dictionary-override, update-sets, integrations, platform-health]
+entities: [business_rule, client_script, ui_policy, ui_action, sys_dictionary, sys_dictionary_override, scoped_app, update_set, sys_update_xml, scripted_rest_api, flow_designer, atf]
+version: ServiceNow — general (April 2026)
+source: browser-use + curated (2026-04-22)
+reviewed: 2026-04-22
+---
+
 # ServiceNow Customizing — Best Practices & Architektur-Leitlinien
 
 > **Stand:** April 2026

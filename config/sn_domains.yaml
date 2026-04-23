@@ -1,0 +1,181 @@
+# ServiceNow Knowledge RAG — Domain Catalog for Entity/Relation Extraction
+#
+# Adopted from AEGIS_Rag seed_domains.yaml (ADR-060 two-tier typing):
+#   - Tier 1: 15 universal entity types + 22 universal relation types
+#   - Tier 2: SN-specific sub-types that map back to universal types for Neo4j labels
+#
+# Used by:
+#   - scripts/index_sn_docs.py → per-chunk LLM extraction via domain-enriched prompts
+#   - import_sn_schema.py → seed graph from live SN instance (:Entity {sub_type:'TABLE'|'FIELD'|'ROLE'})
+#   - extract_sn_entities.py → doc-extracted entities MERGEd by same key scheme (shared graph)
+#
+# Prompt generation: see src/servicenow_mcp/knowledge/extraction_prompts.py
+#   (port of AEGIS get_domain_enriched_extraction_prompts)
+
+# ─────────────────────────────────────────────────────────────────────
+# UNIVERSAL TIER (reused 1:1 from AEGIS — do not diverge)
+# ─────────────────────────────────────────────────────────────────────
+
+universal_entity_types:
+  - PERSON
+  - ORGANIZATION
+  - LOCATION
+  - EVENT
+  - DATE_TIME
+  - CONCEPT
+  - TECHNOLOGY
+  - PRODUCT
+  - METRIC
+  - DOCUMENT
+  - PROCESS
+  - MATERIAL
+  - REGULATION
+  - QUANTITY
+  - FIELD
+
+universal_relation_types:
+  # Structural
+  - PART_OF
+  - CONTAINS
+  - INSTANCE_OF
+  - TYPE_OF
+  # Organizational
+  - EMPLOYS
+  - MANAGES
+  - FOUNDED_BY
+  - OWNS
+  - LOCATED_IN
+  # Causal
+  - CAUSES
+  - ENABLES
+  - REQUIRES
+  - LEADS_TO
+  # Temporal
+  - PRECEDES
+  - FOLLOWS
+  # Functional
+  - USES
+  - CREATES
+  - IMPLEMENTS
+  - DEPENDS_ON
+  # Semantic
+  - SIMILAR_TO
+  - ASSOCIATED_WITH
+  # Fallback
+  - RELATED_TO
+
+# ─────────────────────────────────────────────────────────────────────
+# DOMAIN: itsm_servicenow
+# ─────────────────────────────────────────────────────────────────────
+# Scope v1: Core-9 sub-types + high-value relation hints.
+# Expand after evaluating precision on first indexing run.
+
+domains:
+  - domain_id: itsm_servicenow
+    name: "ServiceNow IT Service Management"
+    description: >
+      ServiceNow platform knowledge: tables, fields, ACLs, business rules,
+      flows, ITIL processes, roles, update sets. Covers OOTB mechanisms and
+      customization patterns.
+    keywords:
+      - ServiceNow
+      - incident
+      - change request
+      - problem
+      - CMDB
+      - business rule
+      - flow designer
+      - client script
+      - script include
+      - ACL
+      - update set
+      - GlideRecord
+      - ITIL
+      - sys_dictionary
+
+    # ─── Tier 2 sub-types (v1: Core-9) ────────────────────────────────
+    entity_sub_types:
+      - TABLE                # → CONCEPT   (incident, cmdb_ci, sys_user)
+      - FIELD                # → CONCEPT   (state, assigned_to, u_cia_*)
+      - BUSINESS_RULE        # → PROCESS   (before/after insert/update logic)
+      - FLOW                 # → PROCESS   (Flow Designer, Subflows)
+      - ROLE                 # → CONCEPT   (itil, admin, change_manager)
+      - ITIL_PROCESS         # → PROCESS   (Incident Mgmt, Change Mgmt)
+      - STATE                # → CONCEPT   (New, In Progress, Resolved)
+      - ACL                  # → REGULATION (Read/Write/Create/Delete)
+      - UPDATE_SET           # → DOCUMENT   (deployment package)
+
+    entity_sub_type_mapping:
+      TABLE: CONCEPT
+      FIELD: CONCEPT
+      BUSINESS_RULE: PROCESS
+      FLOW: PROCESS
+      ROLE: CONCEPT
+      ITIL_PROCESS: PROCESS
+      STATE: CONCEPT
+      ACL: REGULATION
+      UPDATE_SET: DOCUMENT
+
+    # ─── Planned Tier 2 expansion (v2 — not active yet) ───────────────
+    # Uncomment after v1 precision review:
+    #   CLIENT_SCRIPT, SCRIPT_INCLUDE, WORKFLOW, GROUP, TRANSITION,
+    #   APPLICATION_SCOPE, REST_ENDPOINT, SLA_DEFINITION, NOTIFICATION,
+    #   SCHEDULED_JOB, CI_CLASS, CATALOG_ITEM, VARIABLE_SET,
+    #   KNOWLEDGE_ARTICLE, DICTIONARY_ENTRY, CHOICE_VALUE
+
+    # ─── Relation hints (S-P-O patterns) ──────────────────────────────
+    # Format: "RELATION_TYPE → Subject_Type → Object_Type"
+    # These are injected into the extraction prompt as concrete examples.
+    relation_hints:
+      # Structural — table/field topology
+      - "EXTENDS → Table → Table"                    # incident extends task
+      - "HAS_FIELD → Table → Field"
+      - "REFERENCES → Field → Table"                 # assigned_to → sys_user
+
+      # Lifecycle / state machine
+      - "HAS_STATE → Table → State"
+      - "TRANSITIONS_TO → State → State"
+
+      # Automation
+      - "TRIGGERED_BY → BusinessRule → Event"        # before/after insert
+      - "RUNS_ON → BusinessRule → Table"
+      - "IMPLEMENTS → Flow → ITILProcess"
+
+      # Process / ITIL
+      - "USES_TABLE → ITILProcess → Table"           # Incident Mgmt → incident
+      - "REQUIRES_ROLE → ITILProcess → Role"
+
+      # Security / access
+      - "PROTECTED_BY → Table → ACL"
+      - "REQUIRES_ROLE → ACL → Role"
+
+      # Deployment
+      - "PACKAGED_IN → BusinessRule → UpdateSet"
+      - "PACKAGED_IN → Flow → UpdateSet"
+
+    # ─── Ontology references (informational) ──────────────────────────
+    ontology_sources:
+      - name: "ServiceNow Product Documentation"
+        url: "https://docs.servicenow.com/"
+        license: "proprietary (read-only reference)"
+      - name: "ITIL 4 Foundation"
+        url: "https://www.axelos.com/certifications/propath/itil-4"
+        license: "proprietary"
+
+# ─────────────────────────────────────────────────────────────────────
+# EXTRACTION CONFIG
+# ─────────────────────────────────────────────────────────────────────
+extraction:
+  # Active domain (only one for now; future: multi-domain routing)
+  active_domain: itsm_servicenow
+
+  # Gleaning (multi-pass extraction, +30% recall, 2× latency)
+  # Enable after v1 baseline evaluated.
+  gleaning:
+    enabled: false
+    max_passes: 2
+
+  # SpaCy-first (cheap NER baseline before LLM enrichment)
+  # Requires `spacy` + `en_core_web_lg` — not installed yet.
+  spacy_first:
+    enabled: false
