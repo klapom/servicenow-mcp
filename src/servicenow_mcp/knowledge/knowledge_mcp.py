@@ -407,6 +407,8 @@ class ServiceNowKnowledgeMCP:
         "nicht", "kein", "keine", "keinen", "sehr", "mehr", "soll", "muss",
         "the", "how", "what", "which", "does", "can", "from", "with", "into",
         "that", "this", "for", "and", "not", "but", "all", "are", "has", "have",
+        "tell", "about", "relationship", "between", "extend", "extends", "fields",
+        "field", "table", "tables", "reference", "references", "mir", "please",
     }
 
     def _graph_routed_search(self, question: str, limit: int = 8) -> list[dict]:
@@ -565,6 +567,7 @@ class ServiceNowKnowledgeMCP:
         mentioned_tables = unique_tables
 
         results = {}
+        not_found: list[str] = []
 
         # If two tables mentioned, find path
         if len(mentioned_tables) >= 2:
@@ -572,18 +575,41 @@ class ServiceNowKnowledgeMCP:
             if path:
                 results["path"] = path
 
-        # Show fields and extensions of mentioned tables
+        # Show fields and extensions of mentioned tables;
+        # track those that do not exist in the graph.
         for tbl in mentioned_tables[:3]:
             fields = self._graph_table_fields(tbl)
+            extensions = self._graph_table_extensions(tbl)
             if fields:
                 results[f"fields_of_{tbl}"] = fields
-
-            extensions = self._graph_table_extensions(tbl)
             if extensions:
                 results[f"extensions_of_{tbl}"] = extensions
+            if not fields and not extensions:
+                # Explicit existence check to distinguish "leaf table with no
+                # extensions" from "not in graph at all".
+                with self.neo4j_driver.session(database="neo4j") as session:
+                    exists = session.run(
+                        "MATCH (t:Entity {sub_type:'TABLE', name:$n, "
+                        "namespace_id:$ns}) RETURN count(t) > 0 AS e",
+                        n=tbl.lower(), ns=NAMESPACE,
+                    ).single()["e"]
+                    if not exists:
+                        not_found.append(tbl)
 
-        # Search ITIL-process / flow / business-rule / role entities by keyword
-        keywords = re.findall(r'\b[A-Za-z_]{3,}\b', question)
+        if not_found:
+            results["not_found"] = not_found
+            # If the explicit start_node is unknown, skip the noisy keyword
+            # search — it would only return loose English-word matches.
+            if start_node and start_node in not_found:
+                return results
+
+        # Search ITIL-process / flow / business-rule / role entities by
+        # keyword. Only match on .name (not .description) to avoid English-
+        # stopword pollution, and require keyword length ≥ 4.
+        raw_keywords = re.findall(r'\b[A-Za-z_]{4,}\b', question)
+        keywords = [
+            k for k in raw_keywords if k.lower() not in self._STOPWORDS
+        ]
         if keywords:
             with self.neo4j_driver.session(database="neo4j") as session:
                 for kw in keywords[:3]:
@@ -592,8 +618,7 @@ class ServiceNowKnowledgeMCP:
                         MATCH (p:Entity {namespace_id:$ns})
                         WHERE p.sub_type IN ['ITIL_PROCESS','FLOW','BUSINESS_RULE',
                                              'ROLE','STATE','ACL','UPDATE_SET']
-                          AND (toLower(p.name) CONTAINS toLower($kw)
-                               OR toLower(coalesce(p.description,'')) CONTAINS toLower($kw))
+                          AND toLower(p.name) CONTAINS toLower($kw)
                         OPTIONAL MATCH (p)-[:USES_TABLE]->(t:Entity {sub_type:'TABLE'})
                         OPTIONAL MATCH (d:Document)-[:MENTIONS]->(p)
                         RETURN p.sub_type AS type, p.name AS name,
