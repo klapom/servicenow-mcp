@@ -1,0 +1,49 @@
+# Follow-up hints for servicenow-mcp (Sprint 16.5).
+# See docs/internal/followup-hints.md / mcp_toolkit_py.hints for the engine.
+
+version: 1
+
+tools:
+
+  search_sn_docs:
+    hints:
+      - tool: ask_sn_knowledge
+        rationale: "Detailantwort zu einem der gefundenen ServiceNow-Treffer"
+        arguments_template:
+          question: "Erkläre den wichtigsten Treffer aus der vorigen Suche im Detail."
+      - tool: lookup_table
+        rationale: "Schema-Details zu im Treffer erwähnten ServiceNow-Tabellen"
+      - tool: search_sn_docs
+        when: "request.arguments.limit < 5"
+        rationale: "Breitere Suche mit höherem Limit"
+        arguments_template:
+          limit: "20"
+
+  ask_sn_knowledge:
+    hints:
+      - tool: search_sn_docs
+        rationale: "Konkrete Doku-Treffer zur Antwort suchen"
+      - tool: lookup_table
+        rationale: "Schema einer in der Antwort erwähnten Tabelle nachschlagen"
+      - tool: graph_traverse
+        rationale: "Beziehungen zwischen ServiceNow-Entitäten erkunden"
+
+  lookup_table:
+    hints:
+      - tool: search_sn_docs
+        rationale: "Verwendungs-Beispiele der Tabelle in der Dokumentation"
+      - tool: ask_sn_knowledge
+        rationale: "Geschäftslogik hinter der Tabelle und ihre typische Nutzung"
+        arguments_template:
+          question: "Wofür wird diese Tabelle typischerweise verwendet? Welche Felder sind wichtig?"
+      - tool: graph_traverse
+        rationale: "Verbundene Tabellen und Referenzen im Graphen"
+
+  graph_traverse:
+    hints:
+      - tool: ask_sn_knowledge
+        rationale: "Kontext zur Knoten-/Kanten-Auswahl im Klartext"
+        arguments_template:
+          question: "Erkläre die Bedeutung der gefundenen Beziehungen für die ServiceNow-Praxis."
+      - tool: lookup_table
+        rationale: "Schema-Details zu den im Graph genannten Tabellen"

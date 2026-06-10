@@ -18,13 +18,14 @@ from mcp_toolkit_py.metrics import init_metrics
 
 from servicenow_mcp import __service_name__, __version__
 from servicenow_mcp.config import get_settings
-from servicenow_mcp.server import mcp
+from servicenow_mcp.server import install_hints, mcp
 
 
 def main() -> None:
     settings = get_settings()
     setup_logging(settings.log_level)
     init_metrics(__service_name__, __version__)
+    install_hints()
     asyncio.run(
         run_dual_surface(
             mcp,

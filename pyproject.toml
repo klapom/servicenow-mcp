@@ -9,7 +9,7 @@ authors = [{ name = "klapom" }]
 
 dependencies = [
     # Shared runtime (logging, metrics, dual-surface HTTP, stdio, BaseServiceSettings)
-    "mcp-toolkit-py @ git+https://github.com/klapom/mcp-toolkit-py@v0.1.0",
+    "mcp-toolkit-py @ git+https://github.com/klapom/mcp-toolkit-py@v0.2.0",
     # MCP SDK (FastMCP) — kept explicit for IDE/type resolution even though toolkit requires it
     "mcp[cli]>=1.3.0",
     # RAG backends (legacy ServiceNowKnowledgeMCP: Qdrant dense + Neo4j graph + vLLM via OpenAI-compat + Redis cache)
