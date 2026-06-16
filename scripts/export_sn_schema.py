@@ -4,7 +4,7 @@ Export ServiceNow schema metadata (tables, fields, choices, roles) from a
 live SN instance into an Excel workbook.
 
 The Excel file is the human-editable source of truth for the graph seed —
-import_sn_schema.py reads it and writes :Entity nodes into Neo4j.
+import_sn_schema.py reads it and writes :sn_Entity nodes into Neo4j.
 
 Data sources in SN:
   - sys_db_object   → table definitions, inheritance (super_class)

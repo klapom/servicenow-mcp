@@ -2,12 +2,12 @@
 """
 Import an SN schema Excel (from export_sn_schema.py) into Neo4j.
 
-Writes into namespace `sn_mcp` under the same `:Entity` label scheme as
+Writes into namespace `sn_mcp` under the same `:sn_Entity` label scheme as
 scripts/extract_sn_entities.py — seed and extracted entities share the graph.
 
 Label scheme
 ------------
-    :Entity {key, name, sub_type, source}
+    :sn_Entity {key, name, sub_type, source}
       sub_type ∈ {TABLE, FIELD, ROLE, CHOICE_VALUE}
       source   ∈ {seed, doc, seed+doc}  (auto-merged on key collision)
 
@@ -79,7 +79,7 @@ def choice_key(table: str, element: str, value: str) -> str:
 def ensure_constraints(session) -> None:
     session.run(
         "CREATE CONSTRAINT sn_entity_key IF NOT EXISTS "
-        "FOR (e:Entity) REQUIRE e.key IS UNIQUE"
+        "FOR (e:sn_Entity) REQUIRE e.key IS UNIQUE"
     )
 
 
@@ -101,7 +101,7 @@ def purge_legacy_labels(session) -> None:
 def purge_seed_entities(session) -> None:
     """Delete Entity nodes that are ONLY from seed (not mentioned in any doc)."""
     r = session.run(
-        "MATCH (e:Entity {namespace_id:$ns}) "
+        "MATCH (e:sn_Entity {namespace_id:$ns}) "
         "WHERE e.source = 'seed' "
         "AND NOT (:Document)-[:MENTIONS]->(e) "
         "DETACH DELETE e RETURN count(e) as c",
@@ -120,7 +120,7 @@ def upsert_entity(
 ) -> None:
     """MERGE entity; mark source as seed or seed+doc if already present."""
     cypher = (
-        "MERGE (e:Entity {key: $key}) "
+        "MERGE (e:sn_Entity {key: $key}) "
         "ON CREATE SET e.source = 'seed', e.created_by='seed' "
         "ON MATCH  SET e.source = CASE "
         "   WHEN e.source = 'doc' THEN 'seed+doc' "
@@ -147,7 +147,7 @@ def upsert_relation(
     props: dict,
 ) -> None:
     cypher = (
-        "MATCH (a:Entity {key:$fk}), (b:Entity {key:$tk}) "
+        "MATCH (a:sn_Entity {key:$fk}), (b:sn_Entity {key:$tk}) "
         f"MERGE (a)-[r:`{rel_type}`]->(b) "
         "SET r.namespace_id=$ns, r += $props"
     )
@@ -324,7 +324,7 @@ def main() -> int:
     ap.add_argument(
         "--purge-seed",
         action="store_true",
-        help="Also delete prior seed-only :Entity nodes (orphan check)",
+        help="Also delete prior seed-only :sn_Entity nodes (orphan check)",
     )
     ap.add_argument(
         "--skip-choices",

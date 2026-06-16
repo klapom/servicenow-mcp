@@ -54,11 +54,11 @@ def seeded_graph(neo4j_driver) -> None:
     """Ensure the graph has been seeded from *some* SN instance.
 
     Does not care *which* instance — only that at least the core OOTB tables
-    are present as :Entity nodes with source='seed'. Skips otherwise.
+    are present as :sn_Entity nodes with source='seed'. Skips otherwise.
     """
     with neo4j_driver.session() as s:
         count = s.run(
-            "MATCH (t:Entity {sub_type:'TABLE', namespace_id:$ns}) "
+            "MATCH (t:sn_Entity {sub_type:'TABLE', namespace_id:$ns}) "
             "WHERE t.name IN $names "
             "AND t.source IN ['seed', 'seed+doc'] "
             "RETURN count(t) AS c",

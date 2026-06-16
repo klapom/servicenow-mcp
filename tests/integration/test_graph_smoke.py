@@ -139,7 +139,7 @@ def test_seed_and_doc_coexist_when_both_populated(
     """If the doc-extraction pipeline has also run, verify source merging."""
     with neo4j_driver.session() as s:
         doc_count = s.run(
-            "MATCH (e:Entity {namespace_id:'sn_mcp'}) "
+            "MATCH (e:sn_Entity {namespace_id:'sn_mcp'}) "
             "WHERE e.source IN ['doc', 'seed+doc'] RETURN count(e) AS c"
         ).single()["c"]
     if doc_count == 0:
@@ -147,7 +147,7 @@ def test_seed_and_doc_coexist_when_both_populated(
 
     with neo4j_driver.session() as s:
         merged = s.run(
-            "MATCH (e:Entity {namespace_id:'sn_mcp', source:'seed+doc'}) "
+            "MATCH (e:sn_Entity {namespace_id:'sn_mcp', source:'seed+doc'}) "
             "RETURN count(e) AS c"
         ).single()["c"]
     assert merged > 0, (

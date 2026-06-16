@@ -6,7 +6,7 @@ write them to Neo4j as typed nodes/edges under namespace `sn_mcp`.
 Pipeline per chunk:
     1. Entity extraction (structured JSON, no reasoning)
     2. Relation extraction using the entities found (structured JSON)
-    3. Write :Document, :Entity, :MENTIONS, plus relation hints as typed edges
+    3. Write :Document, :sn_Entity, :MENTIONS, plus relation hints as typed edges
 
 vLLM: Qwen 3.6 with chat_template_kwargs.enable_thinking=False +
 response_format=json_object — no <think> blocks to strip.
@@ -359,7 +359,7 @@ def extract_relations(
 def ensure_constraints(session) -> None:
     session.run(
         "CREATE CONSTRAINT sn_entity_key IF NOT EXISTS "
-        "FOR (e:Entity) REQUIRE e.key IS UNIQUE"
+        "FOR (e:sn_Entity) REQUIRE e.key IS UNIQUE"
     )
     session.run(
         "CREATE CONSTRAINT sn_document_id IF NOT EXISTS "
@@ -399,7 +399,7 @@ def persist_chunk(
         # Source tagging: 'doc' on create, promote to 'seed+doc' if the
         # seed importer has already claimed this key.
         session.run(
-            "MERGE (e:Entity {key: $key}) "
+            "MERGE (e:sn_Entity {key: $key}) "
             "ON CREATE SET e.source = 'doc' "
             "ON MATCH  SET e.source = CASE "
             "   WHEN e.source = 'seed' THEN 'seed+doc' "
@@ -414,7 +414,7 @@ def persist_chunk(
             desc=e["description"],
         )
         session.run(
-            "MATCH (d:Document {doc_id: $did}), (e:Entity {key: $key}) "
+            "MATCH (d:Document {doc_id: $did}), (e:sn_Entity {key: $key}) "
             "MERGE (d)-[m:MENTIONS]->(e) "
             "SET m.chunk_idx=$idx, m.confidence=$conf",
             did=did,
@@ -427,7 +427,7 @@ def persist_chunk(
         ok = entity_key(r["object"]["name"], r["object"]["type"])
         # Relation type must be static in Cypher; inject via APOC-free template
         cypher = (
-            "MATCH (s:Entity {key: $sk}), (o:Entity {key: $ok}) "
+            "MATCH (s:sn_Entity {key: $sk}), (o:sn_Entity {key: $ok}) "
             f"MERGE (s)-[rel:`{r['relation']}`]->(o) "
             "SET rel.namespace_id=$ns, rel.strength=$strength, "
             "    rel.description=coalesce(rel.description, $desc), "
