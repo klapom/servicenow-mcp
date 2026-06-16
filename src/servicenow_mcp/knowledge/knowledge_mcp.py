@@ -350,7 +350,7 @@ class ServiceNowKnowledgeMCP:
     def _graph_expand_query(self, question: str) -> list[str]:
         """Find related tables/fields/processes via Neo4j keyword search.
 
-        Uses unified :Entity graph (seed schema from SN export + doc-extracted).
+        Uses unified :sn_Entity graph (seed schema from SN export + doc-extracted).
         """
         keywords = re.findall(r'\b[A-Za-z_]{4,}\b', question)
         if not keywords:
@@ -362,9 +362,9 @@ class ServiceNowKnowledgeMCP:
                 # Signal A: Schema fields (prefer seed — authoritative)
                 result = session.run(
                     """
-                    MATCH (t:Entity {sub_type:'TABLE', namespace_id:$ns})
+                    MATCH (t:sn_Entity {sub_type:'TABLE', namespace_id:$ns})
                           -[:HAS_FIELD]->
-                          (f:Entity {sub_type:'FIELD', namespace_id:$ns})
+                          (f:sn_Entity {sub_type:'FIELD', namespace_id:$ns})
                     WHERE (toLower(f.name) CONTAINS toLower($kw)
                            OR toLower(coalesce(f.description,'')) CONTAINS toLower($kw)
                            OR toLower(coalesce(f.label,'')) CONTAINS toLower($kw))
@@ -380,11 +380,11 @@ class ServiceNowKnowledgeMCP:
                 # Signal B: ITIL processes and concepts (doc-extracted)
                 result = session.run(
                     """
-                    MATCH (p:Entity {namespace_id:$ns})
+                    MATCH (p:sn_Entity {namespace_id:$ns})
                     WHERE p.sub_type IN ['ITIL_PROCESS','FLOW','BUSINESS_RULE','ROLE']
                       AND (toLower(p.name) CONTAINS toLower($kw)
                            OR toLower(coalesce(p.description,'')) CONTAINS toLower($kw))
-                    OPTIONAL MATCH (p)-[:USES_TABLE]->(t:Entity {sub_type:'TABLE'})
+                    OPTIONAL MATCH (p)-[:USES_TABLE]->(t:sn_Entity {sub_type:'TABLE'})
                     RETURN p.name AS pattern_name,
                            collect(DISTINCT t.name) AS related_tables
                     LIMIT 5
@@ -426,7 +426,7 @@ class ServiceNowKnowledgeMCP:
                 # Match any doc-extracted concept (not pure schema nodes)
                 result = session.run(
                     """
-                    MATCH (d:Document {namespace_id:$ns})-[:MENTIONS]->(e:Entity)
+                    MATCH (d:Document {namespace_id:$ns})-[:MENTIONS]->(e:sn_Entity)
                     WHERE e.sub_type IN ['ITIL_PROCESS','FLOW','BUSINESS_RULE',
                                          'ROLE','STATE','ACL','UPDATE_SET']
                       AND (toLower(e.name) CONTAINS toLower($kw)
@@ -489,9 +489,9 @@ class ServiceNowKnowledgeMCP:
             result = session.run(
                 """
                 MATCH path = shortestPath(
-                    (a:Entity {sub_type:'TABLE', name:$start, namespace_id:$ns})
+                    (a:sn_Entity {sub_type:'TABLE', name:$start, namespace_id:$ns})
                     -[:EXTENDS|HAS_FIELD|REFERENCES|USES_TABLE*..6]->
-                    (b:Entity {sub_type:'TABLE', name:$end, namespace_id:$ns})
+                    (b:sn_Entity {sub_type:'TABLE', name:$end, namespace_id:$ns})
                 )
                 UNWIND relationships(path) AS rel
                 RETURN
@@ -514,11 +514,11 @@ class ServiceNowKnowledgeMCP:
         with self.neo4j_driver.session(database="neo4j") as session:
             result = session.run(
                 """
-                MATCH (t:Entity {sub_type:'TABLE', name:$name, namespace_id:$ns})
+                MATCH (t:sn_Entity {sub_type:'TABLE', name:$name, namespace_id:$ns})
                       -[:HAS_FIELD]->
-                      (f:Entity {sub_type:'FIELD', namespace_id:$ns})
+                      (f:sn_Entity {sub_type:'FIELD', namespace_id:$ns})
                 WHERE coalesce(f.source,'doc') <> 'doc'
-                OPTIONAL MATCH (f)-[:REFERENCES]->(rt:Entity {sub_type:'TABLE'})
+                OPTIONAL MATCH (f)-[:REFERENCES]->(rt:sn_Entity {sub_type:'TABLE'})
                 RETURN f.name AS field,
                        coalesce(f.field_type, f.label) AS field_type,
                        f.description AS description,
@@ -534,9 +534,9 @@ class ServiceNowKnowledgeMCP:
         with self.neo4j_driver.session(database="neo4j") as session:
             result = session.run(
                 """
-                MATCH (child:Entity {sub_type:'TABLE', namespace_id:$ns})
+                MATCH (child:sn_Entity {sub_type:'TABLE', namespace_id:$ns})
                       -[:EXTENDS]->
-                      (parent:Entity {sub_type:'TABLE', name:$name, namespace_id:$ns})
+                      (parent:sn_Entity {sub_type:'TABLE', name:$name, namespace_id:$ns})
                 RETURN child.name AS child_table,
                        coalesce(child.description, child.label) AS description
                 ORDER BY child.name
@@ -589,7 +589,7 @@ class ServiceNowKnowledgeMCP:
                 # extensions" from "not in graph at all".
                 with self.neo4j_driver.session(database="neo4j") as session:
                     exists = session.run(
-                        "MATCH (t:Entity {sub_type:'TABLE', name:$n, "
+                        "MATCH (t:sn_Entity {sub_type:'TABLE', name:$n, "
                         "namespace_id:$ns}) RETURN count(t) > 0 AS e",
                         n=tbl.lower(), ns=NAMESPACE,
                     ).single()["e"]
@@ -615,11 +615,11 @@ class ServiceNowKnowledgeMCP:
                 for kw in keywords[:3]:
                     result = session.run(
                         """
-                        MATCH (p:Entity {namespace_id:$ns})
+                        MATCH (p:sn_Entity {namespace_id:$ns})
                         WHERE p.sub_type IN ['ITIL_PROCESS','FLOW','BUSINESS_RULE',
                                              'ROLE','STATE','ACL','UPDATE_SET']
                           AND toLower(p.name) CONTAINS toLower($kw)
-                        OPTIONAL MATCH (p)-[:USES_TABLE]->(t:Entity {sub_type:'TABLE'})
+                        OPTIONAL MATCH (p)-[:USES_TABLE]->(t:sn_Entity {sub_type:'TABLE'})
                         OPTIONAL MATCH (d:Document)-[:MENTIONS]->(p)
                         RETURN p.sub_type AS type, p.name AS name,
                                p.description AS description,
@@ -639,9 +639,9 @@ class ServiceNowKnowledgeMCP:
                 kw = question.split()[0] if question.split() else question
                 result = session.run(
                     """
-                    MATCH (t:Entity {sub_type:'TABLE', namespace_id:$ns})
+                    MATCH (t:sn_Entity {sub_type:'TABLE', namespace_id:$ns})
                           -[:HAS_FIELD]->
-                          (f:Entity {sub_type:'FIELD', namespace_id:$ns})
+                          (f:sn_Entity {sub_type:'FIELD', namespace_id:$ns})
                     WHERE coalesce(f.source,'doc') <> 'doc'
                       AND (toLower(f.name) CONTAINS toLower($kw)
                            OR toLower(coalesce(f.label,'')) CONTAINS toLower($kw)
